@@ -1,0 +1,136 @@
+version: "3.7"
+
+services:
+  thanos-query:
+    container_name: thanos-query
+    image: "thanos:latest"
+    ports:
+      - "10909:10909"
+    entrypoint: ["/bin/thanos", "query",
+      "--log.level", "debug",
+      "--http-address", "0.0.0.0:10909",
+      "--store", "thanos-store:10101",
+      "--store", "thanos-receive-0:10701",
+      "--store", "thanos-receive-1:10801",
+      "--store", "thanos-receive-2:10901" ]
+
+  thanos-store:
+    container_name: thanos-store
+    image: "thanos:latest"
+    volumes:
+      - ./objstore:/objstore
+      - ./configs/local_objstore.yaml:/etc/thanos_objstore.yaml
+    ports:
+      - "10101:10101"
+    entrypoint: ["/bin/thanos", "store",
+      "--log.level", "debug",
+      "--grpc-address", "0.0.0.0:10101",
+      "--http-address", "0.0.0.0:10102",
+      "--objstore.config-file", "/etc/thanos_objstore.yaml"]
+     
+  thanos-receive-0:
+    container_name: thanos-receive-0
+    image: "thanos:latest"
+    volumes:
+      - multi-tsdb-volume-0:/tsdb
+      - ./configs/local_objstore.yaml:/etc/thanos_objstore.yaml
+      - ./configs/local_hashring.json:/etc/thanos_hashring.json
+    ports:
+      - "10701-10703"
+    entrypoint: ["/bin/thanos", "receive",
+        "--log.level", "debug",
+        "--tsdb.path", "/tsdb",
+        "--grpc-address", "0.0.0.0:10701",
+        "--http-address", "0.0.0.0:10702",
+        "--remote-write.address", "0.0.0.0:10703",
+        "--receive.replication-factor", "1",
+        "--label", "receive_replica=\"0\"",
+        "--receive.local-endpoint", "thanos-receive-0:10701",
+        "--objstore.config-file", "/etc/thanos_objstore.yaml",
+        "--receive.hashrings-file=/etc/thanos_hashring.json" ]
+
+  thanos-receive-1:
+    container_name: thanos-receive-1
+    image: "thanos:latest"
+    volumes:
+      - multi-tsdb-volume-1:/tsdb
+      - ./configs/local_objstore.yaml:/etc/thanos_objstore.yaml
+      - ./configs/local_hashring.json:/etc/thanos_hashring.json
+    ports:
+      - "10801-10803"
+    entrypoint: ["/bin/thanos", "receive",
+        "--log.level", "debug",
+        "--tsdb.path", "/tsdb",
+        "--grpc-address", "0.0.0.0:10801",
+        "--http-address", "0.0.0.0:10802",
+        "--remote-write.address", "0.0.0.0:10803",
+        "--receive.replication-factor", "1",
+        "--label", "receive_replica=\"1\"",
+        "--receive.local-endpoint", "thanos-receive-1:10801",
+        "--objstore.config-file", "/etc/thanos_objstore.yaml",
+        "--receive.hashrings-file=/etc/thanos_hashring.json" ]
+
+  thanos-receive-2:
+    container_name: thanos-receive-2
+    image: "thanos:latest"
+    volumes:
+      - multi-tsdb-volume-2:/tsdb
+      - ./objstore:/objstore
+      - ./configs/local_objstore.yaml:/etc/thanos_objstore.yaml
+      - ./configs/local_hashring.json:/etc/thanos_hashring.json
+    ports:
+      - "10901-10903"
+    entrypoint: ["/bin/thanos", "receive",
+        "--log.level", "debug",
+        "--tsdb.path", "/tsdb",
+        "--grpc-address", "0.0.0.0:10901",
+        "--http-address", "0.0.0.0:10902",
+        "--remote-write.address", "0.0.0.0:10903",
+        "--receive.replication-factor", "1",
+        "--label", "receive_replica=\"2\"",
+        "--receive.local-endpoint", "thanos-receive-2:10901",
+        "--objstore.config-file", "/etc/thanos_objstore.yaml",
+        "--receive.hashrings-file=/etc/thanos_hashring.json" ]
+
+  prometheus:
+    container_name: prometheus
+    image: "prom/prometheus:v2.17.2"
+    user: "root:root"
+    volumes:
+      - prom-tsdb-volume:/prom-tsdb
+      - ./configs/local_prom.yaml:/etc/prom.yaml
+    ports:
+      - "9090:9090"
+    entrypoint: ["/bin/prometheus",
+      "--log.level=debug",
+      "--storage.tsdb.retention.time=72h",
+      "--config.file=/etc/prom.yaml",
+      "--storage.tsdb.path=/prom-tsdb",
+      "--storage.tsdb.min-block-duration=2h",
+      "--storage.tsdb.max-block-duration=2h",
+      "--web.enable-lifecycle"]
+
+  # you can add your own development container, I like using debian:stable with
+  # some tools pre-packaged
+  #jrepp-dev:
+  #  container_name: jrepp-dev
+  #  image: "jrepp-dev"
+  #  volumes:
+  #    - multi-tsdb-volume-0:/multi-tsdb-0
+  #    - multi-tsdb-volume-1:/multi-tsdb-1
+  #    - multi-tsdb-volume-2:/multi-tsdb-2
+  #    - prom-tsdb-volume:/prom-tsdb
+  #    - ./objstore:/objstore
+  #    - ./configs/local_objstore.yaml:/etc/thanos_objstore.yaml
+  #    - ./configs/local_hashring.json:/etc/thanos_hashring.json
+  #  entrypoint: ["tail", "-f", "/dev/null"]
+
+networks:
+  default:
+    name: begone
+
+volumes:
+    multi-tsdb-volume-0: {}
+    multi-tsdb-volume-1: {}
+    multi-tsdb-volume-2: {}
+    prom-tsdb-volume: {}
